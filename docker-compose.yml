@@ -1,0 +1,116 @@
+# ============================================================
+# MoviePilot V2 - Docker Compose 部署
+# ============================================================
+# 完整观影栈: MoviePilot + qBittorrent + Jackett
+#
+# 使用方法:
+#   docker compose up -d
+#   然后访问:
+#   - MoviePilot: http://localhost:3000
+#   - qBittorrent: http://localhost:8082 (默认 admin / adminadmin)
+#   - Jackett: http://localhost:9117
+#
+# 注意: 首次运行需要先配置 MoviePilot
+# ============================================================
+
+services:
+  # ===== MoviePilot V2 =====
+  moviepilot:
+    image: jxxghp/moviepilot-v2:latest
+    container_name: moviepilot
+    restart: unless-stopped
+    ports:
+      - "3000:3000"           # Web UI
+    volumes:
+      # 配置文件
+      - ./config:/config
+      # 媒体库目录（按需修改）
+      - ./media:/media
+      # 下载目录
+      - ./downloads:/downloads
+    environment:
+      # ---- 基础配置 ----
+      - TZ=Asia/Shanghai
+      - PUID=1000
+      - PGID=1000
+      - UMASK=022
+
+      # ---- 登录认证 ----
+      - SUPERUSER=admin
+      - SUPERUSER_PASSWORD=password
+
+      # ---- TMDB API（必填！用于刮削元数据）----
+      # 申请: https://www.themoviedb.org/settings/api
+      - TMDB_API_KEY=
+      - TMDB_API_DOMAIN=api.themoviedb.org
+
+      # ---- 消息通知（可选）----
+      # Telegram
+      # - TELEGRAM_TOKEN=
+      # - TELEGRAM_CHAT_ID=
+      # Server酱
+      # - SERVERCHAN_SCKEY=
+
+      # ---- 下载器配置（可选，推荐配合 qBittorrent）----
+      # - DOWNLOADER=qbittorrent
+      # - QB_HOST=http://qbittorrent:8082
+      # - QB_USER=admin
+      # - QB_PASSWORD=adminadmin
+
+      # ---- 索引器配置（可选，推荐配合 Jackett）----
+      # - INDEXER=jackett
+      # - JACKETT_HOST=http://jackett:9117
+      # - JACKETT_API_KEY=
+
+      # ---- 媒体库配置（可选）----
+      # - MEDIA_SERVER=emby
+      # - EMBY_HOST=http://emby:8096
+      # - EMBY_API_KEY=
+
+    networks:
+      - media_network
+    depends_on:
+      - qbittorrent
+      - jackett
+
+  # ===== qBittorrent (下载器) =====
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    ports:
+      - "8082:8082"           # Web UI
+      - "6881:6881"           # TCP 下载端口
+      - "6881:6881/udp"       # UDP 下载端口
+    volumes:
+      - ./qbittorrent/config:/config
+      - ./downloads:/downloads   # 与 moviepilot 共享下载目录
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      - WEBUI_PORT=8082
+      - TORRENTING_PORT=6881
+    networks:
+      - media_network
+
+  # ===== Jackett (索引器) =====
+  jackett:
+    image: lscr.io/linuxserver/jackett:latest
+    container_name: jackett
+    restart: unless-stopped
+    ports:
+      - "9117:9117"           # Web UI
+    volumes:
+      - ./jackett/config:/config
+      - ./downloads:/downloads
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+    networks:
+      - media_network
+
+networks:
+  media_network:
+    driver: bridge
